@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security Incident Tracker</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--tx:#e2e8f0;--mut:#94a3b8;--ac:#38bdf8}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:900px;margin:0 auto;padding:20px}.card{background:var(--card);border-radius:10px;padding:16px;margin-bottom:16px}
+input,select,textarea,button{font:inherit;padding:8px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:var(--tx);width:100%;margin:4px 0}
+button{background:var(--ac);color:#0f172a;border:0;cursor:pointer;font-weight:600}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+.stat{text-align:center}.stat b{font-size:28px;display:block}table{width:100%;border-collapse:collapse}td,th{padding:8px;text-align:left;border-bottom:1px solid #334155;font-size:14px}
+.tag{padding:2px 8px;border-radius:99px;font-size:12px;color:#0f172a}.low{background:#86efac}.medium{background:#fde047}.high{background:#fb923c}.critical{background:#f87171}
+.hide{display:none}.err{color:#f87171}h1{font-size:22px}a{color:var(--ac);cursor:pointer}
+</style></head><body><main>
+<h1>🛡️ Security Incident Tracker</h1>
+<div id="authBox" class="card" style="max-width:360px">
+  <input id="u" placeholder="Username"><input id="p" type="password" placeholder="Password (min 8)">
+  <div class="row"><button onclick="login()">Login</button><button onclick="register()">Register</button></div>
+  <div id="msg" class="err"></div>
+</div>
+<div id="app" class="hide">
+  <div class="card"><span id="who"></span> · <a onclick="logout()">Logout</a></div>
+  <div class="row" id="stats"></div>
+  <div class="card"><b>Report incident</b>
+    <input id="t" placeholder="Title" maxlength="150">
+    <textarea id="d" placeholder="Description" rows="2"></textarea>
+    <div class="row"><select id="s"><option>low</option><option>medium</option><option>high</option><option>critical</option></select>
+    <button onclick="addInc()">Submit</button></div></div>
+  <div class="card" style="overflow-x:auto"><table><thead><tr><th>#</th><th>Title</th><th>Severity</th><th>Status</th><th>Reporter</th></tr></thead><tbody id="rows"></tbody></table></div>
+</div>
+<script>
+let token=localStorage.getItem('tok');
+const $=id=>document.getElementById(id);
+async function api(path,method='GET',body){
+  const r=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));if(r.status===401&&token)logout();if(!r.ok)throw new Error(j.error||'Error');return j;
+}
+async function register(){try{await api('/register','POST',{username:$('u').value,password:$('p').value});$('msg').textContent='Registered. Now login.'}catch(e){$('msg').textContent=e.message}}
+async function login(){try{const j=await api('/login','POST',{username:$('u').value,password:$('p').value});token=j.token;localStorage.setItem('tok',token);localStorage.setItem('usr',j.username);show()}catch(e){$('msg').textContent=e.message}}
+function logout(){token=null;localStorage.clear();$('app').classList.add('hide');$('authBox').classList.remove('hide')}
+async function addInc(){try{await api('/incidents','POST',{title:$('t').value,description:$('d').value,severity:$('s').value});$('t').value=$('d').value='';load()}catch(e){alert(e.message)}}
+async function setStatus(id,st){await api('/incidents/'+id,'PATCH',{status:st});load()}
+function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
+async function load(){
+  const [inc,stats]=await Promise.all([api('/incidents'),api('/stats')]);
+  const st=$('stats');st.replaceChildren();
+  ['critical','high','medium','low'].forEach(sv=>{const c=el('div','','card stat');c.append(el('b',(stats.find(x=>x.severity===sv)||{count:0}).count),el('span',sv+' open'));st.append(c)});
+  const tb=$('rows');tb.replaceChildren();
+  inc.forEach(i=>{const tr=el('tr');tr.append(el('td',i.id),el('td',i.title));
+    const sv=el('td');sv.append(el('span',i.severity,'tag '+i.severity));tr.append(sv);
+    const tdS=el('td');const sel=el('select');['open','investigating','resolved'].forEach(o=>{const op=el('option',o);if(o===i.status)op.selected=true;sel.append(op)});
+    sel.onchange=()=>setStatus(i.id,sel.value);tdS.append(sel);tr.append(tdS,el('td',i.reporter));tb.append(tr)});
+}
+function show(){$('authBox').classList.add('hide');$('app').classList.remove('hide');$('who').textContent='Logged in as '+localStorage.getItem('usr');load()}
+if(token)show();
+</script></main></body></html>
